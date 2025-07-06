@@ -339,14 +339,6 @@ impl App {
                                     data.color_map = Some(extract_color_to_temp_map(
                                         img, data.min, data.max, data.step,
                                     ));
-                                    if let Some(color_map) = &data.color_map {
-                                        for (color, temp) in color_map.iter() {
-                                            println!(
-                                                "{temp}°C -> RGB({},{},{})",
-                                                color[0], color[1], color[2]
-                                            );
-                                        }
-                                    }
                                 } else {
                                     ui.label(RichText::new("No image loaded"));
                                 }
@@ -384,15 +376,10 @@ fn extract_color_to_temp_map(
 
     for i in 0..=steps {
         let offset = ((i as f32 / steps as f32) * height as f32).round() as u32;
-        println!("Step {i}: offset {offset}");
         let py = y + height - offset as f32;
         let px = x + width as f32 / 2.0;
 
         let pixel = img.get_pixel(px as u32, py as u32);
-        println!(
-            "Step {i}: pixel at ({}, {}) -> RGB({}, {}, {})",
-            px, py, pixel[0], pixel[1], pixel[2]
-        );
         let rgb = [pixel[0], pixel[1], pixel[2]];
         let temp = min_temp + i as f32 * step;
 
