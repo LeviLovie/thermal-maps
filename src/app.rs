@@ -145,6 +145,8 @@ impl App {
                         && mouse_pos.1 <= y + tex.height() / 2.0
                     {
                         data.selected_image = Some(i);
+                        data.hover_temp = None;
+                        data.color_map = None;
                         break;
                     }
                     y += tex.height() / 2.0 + 10.0;
