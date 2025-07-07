@@ -15,15 +15,17 @@ impl<F: Ord, T: Clone> Map<F, T> {
             self.0.push((key, value));
         }
     }
+}
 
-    pub fn get_closest(&self, key: &F) -> Option<T>
-    where
-        F: PartialOrd,
-    {
+impl<F: Clone + Eq + std::hash::Hash, T: Clone> Map<F, T> {
+    pub fn get_closest_by(&self, dist: impl Fn(&F) -> f32) -> Option<T> {
         self.0
             .iter()
-            .filter(|(k, _)| k <= key)
-            .max_by_key(|(k, _)| k)
+            .min_by(|(a, _), (b, _)| {
+                dist(a)
+                    .partial_cmp(&dist(b))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .map(|(_, v)| v.clone())
     }
 }

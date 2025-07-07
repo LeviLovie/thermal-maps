@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use image::RgbaImage;
 use macroquad::prelude::*;
 use std::{

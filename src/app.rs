@@ -110,7 +110,7 @@ impl BrowseData {
             let mouse_pos = mouse_position();
             let mut y = self.scroll;
             for (i, image) in self.images.iter().enumerate() {
-                if let Some(t) = &image.texture { 
+                if let Some(t) = &image.texture {
                     if mouse_pos.0 >= 0.0
                         && mouse_pos.0 <= t.width() / 2.0
                         && mouse_pos.1 >= y
@@ -130,19 +130,26 @@ impl BrowseData {
 
         // Update images the have an image loaded but not the texture
         // if !self.loaded {
-            let mut not_loaded = false;
-            for image in self.images.iter_mut() {
-                let is_loading = *image.is_loading.lock().unwrap();
-                if is_loading {
-                    not_loaded = true;
-                }
-                if !is_loading && let Some(d) = image.data.lock().unwrap().as_ref() && image.texture.is_none() {
-                    image.texture = Some(Texture2D::from_rgba8(d.image.width() as u16, d.image.height() as u16, d.image.as_raw()));
-                }
+        let mut not_loaded = false;
+        for image in self.images.iter_mut() {
+            let is_loading = *image.is_loading.lock().unwrap();
+            if is_loading {
+                not_loaded = true;
             }
-            if !not_loaded {
-                self.loaded = true;
+            if !is_loading
+                && let Some(d) = image.data.lock().unwrap().as_ref()
+                && image.texture.is_none()
+            {
+                image.texture = Some(Texture2D::from_rgba8(
+                    d.image.width() as u16,
+                    d.image.height() as u16,
+                    d.image.as_raw(),
+                ));
             }
+        }
+        if !not_loaded {
+            self.loaded = true;
+        }
         // }
 
         // Update temperature based on mouse pos from the image
@@ -168,7 +175,11 @@ impl BrowseData {
 
                     if pixel_x < d.image.width() as f32 && pixel_y < d.image.height() as f32 {
                         let pixel = d.image.get_pixel(pixel_x as u32, pixel_y as u32);
-                        self.hover = d.color_temp.get_closest(&[pixel[0], pixel[1], pixel[2]]);
+                        let rgb = [pixel[0], pixel[1], pixel[2]];
+                        self.hover = d.color_temp.get_closest_by(|color| {
+                            let d = |a: u8, b: u8| (a as f32 - b as f32).powi(2);
+                            d(color[0], rgb[0]) + d(color[1], rgb[1]) + d(color[2], rgb[2])
+                        });
                     }
                 } else {
                     self.hover = None;
@@ -199,22 +210,12 @@ impl BrowseData {
                     y,
                     WHITE,
                     DrawTextureParams {
-                        dest_size: Some(Vec2::new(
-                            t.width() / 2.0,
-                            t.height() / 2.0,
-                        )),
+                        dest_size: Some(Vec2::new(t.width() / 2.0, t.height() / 2.0)),
                         ..Default::default()
                     },
                 );
                 if self.selected_image == Some(i) {
-                    draw_rectangle_lines(
-                        0.0,
-                        y,
-                        t.width() / 2.0,
-                        t.height() / 2.0,
-                        2.0,
-                        YELLOW,
-                    );
+                    draw_rectangle_lines(0.0, y, t.width() / 2.0, t.height() / 2.0, 2.0, YELLOW);
                 }
 
                 y += t.height() / 2.0 + 10.0;
@@ -252,7 +253,9 @@ impl BrowseData {
                 .exact_width(300.0)
                 .show(egui_ctx, |ui| {
                     if let Some(image) = self.selected_image {
-                        if let Some(d) = self.images[image].data.lock().unwrap().as_mut() && let Some(t) = &self.images[image].texture {
+                        if let Some(d) = self.images[image].data.lock().unwrap().as_mut()
+                            && let Some(t) = &self.images[image].texture
+                        {
                             ui.label(
                                 RichText::new(format!(
                                     "{}",
@@ -265,7 +268,11 @@ impl BrowseData {
                                 .size(20.0),
                             );
                             if !self.loaded {
-                                ui.label(RichText::new("Loading images...").size(20.0).color(Color32::from_rgb(200, 200, 200)));
+                                ui.label(
+                                    RichText::new("Loading images...")
+                                        .size(20.0)
+                                        .color(Color32::from_rgb(200, 200, 200)),
+                                );
                             }
 
                             Grid::new("props").show(ui, |ui| {
@@ -299,12 +306,8 @@ impl BrowseData {
                             });
 
                             if ui.button("Extract color map").clicked() {
-                                d.color_temp = extract_color_to_temp_map(
-                                    &d.image,
-                                    d.min,
-                                    d.max,
-                                    d.step,
-                                );
+                                d.color_temp =
+                                    extract_color_to_temp_map(&d.image, d.min, d.max, d.step);
                             }
 
                             if let Some(hover) = self.hover {
