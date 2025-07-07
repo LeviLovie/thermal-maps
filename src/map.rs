@@ -15,6 +15,10 @@ impl<F: Ord, T: Clone> Map<F, T> {
             self.0.push((key, value));
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
 impl<F: Clone + Eq + std::hash::Hash, T: Clone> Map<F, T> {

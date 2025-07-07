@@ -14,6 +14,10 @@ pub struct ImageData {
     pub min: f32,
     pub max: f32,
     pub step: f32,
+    pub filter_min_enabled: bool,
+    pub filter_min: f32,
+    pub filter_max_enabled: bool,
+    pub filter_max: f32,
     pub color_temp: Map<[u8; 3], f32>,
 }
 
@@ -76,6 +80,10 @@ impl Image {
                 max,
                 step,
                 color_temp,
+                filter_min_enabled: false,
+                filter_min: min,
+                filter_max_enabled: false,
+                filter_max: max,
             });
             *is_loading.lock().unwrap() = false;
         });

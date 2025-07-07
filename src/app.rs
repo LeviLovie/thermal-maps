@@ -150,7 +150,6 @@ impl BrowseData {
         if !not_loaded {
             self.loaded = true;
         }
-        // }
 
         // Update temperature based on mouse pos from the image
         if let Some(selected) = self.selected_image {
@@ -230,7 +229,9 @@ impl BrowseData {
         }
 
         let max_width = self.max_width;
-        if let Some(image) = self.selected_image {
+        if let Some(image) = self.selected_image
+            && self.loaded
+        {
             if let Some(t) = &self.images[image].texture {
                 let image_ratio = t.width() / t.height();
                 let width = screen_width() - max_width - 10.0 - 175.0 - 10.0;
@@ -252,21 +253,19 @@ impl BrowseData {
             egui::SidePanel::right("properties")
                 .exact_width(175.0)
                 .show(egui_ctx, |ui| {
+                    let mut new_filtered_texture: Option<Texture2D> = None;
                     if let Some(image) = self.selected_image {
                         if let Some(d) = self.images[image].data.lock().unwrap().as_mut()
                             && let Some(t) = &self.images[image].texture
                         {
-                            ui.label(
-                                RichText::new(format!(
-                                    "{}",
-                                    self.images[image]
-                                        .path
-                                        .file_name()
-                                        .unwrap_or_default()
-                                        .to_string_lossy()
-                                ))
-                                .size(20.0),
-                            );
+                            ui.heading(format!(
+                                "{}",
+                                self.images[image]
+                                    .path
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                            ));
                             if !self.loaded {
                                 ui.label(
                                     RichText::new("Loading images...")
@@ -291,6 +290,7 @@ impl BrowseData {
 
                             ui.separator();
 
+                            ui.heading("Colors");
                             Grid::new("controls").num_columns(2).show(ui, |ui| {
                                 ui.label("Min");
                                 ui.add(egui::DragValue::new(&mut d.min).speed(d.step));
@@ -310,12 +310,90 @@ impl BrowseData {
                                     extract_color_to_temp_map(&d.image, d.min, d.max, d.step);
                             }
 
+                            ui.separator();
+
+                            ui.add_enabled_ui(d.color_temp.len() > 0, |ui| {
+                                ui.heading("Filter");
+
+                                Grid::new("filter").num_columns(4).min_col_width(10.0).show(ui, |ui| {
+                                    ui.label("Min");
+                                    if ui.checkbox(&mut d.filter_min_enabled, "").clicked() {
+                                        d.filter_min = d.min;
+                                    }
+                                    if !d.filter_min_enabled {
+                                        d.filter_min = d.min;
+                                    }
+                                    ui.add_enabled_ui(d.filter_min_enabled, |ui| {
+                                        ui.add(
+                                            egui::DragValue::new(&mut d.filter_min).speed(d.step),
+                                        );
+                                    });
+                                    ui.end_row();
+
+                                    ui.label("Max");
+                                    if ui.checkbox(&mut d.filter_max_enabled, "").clicked() {
+                                        d.filter_max = d.max;
+                                    }
+                                    if !d.filter_max_enabled {
+                                        d.filter_max = d.max;
+                                    }
+                                    ui.add_enabled_ui(d.filter_max_enabled, |ui| {
+                                        ui.add(
+                                            egui::DragValue::new(&mut d.filter_max).speed(d.step),
+                                        );
+                                    });
+                                    ui.end_row();
+                                });
+
+                                if ui.button("Apply filter").clicked() {
+                                    let mut f = d.image.clone();
+                                    for row in f.rows_mut() {
+                                        for pixel in row {
+                                            let temp = d.color_temp.get_closest_by(|color| {
+                                                let d =
+                                                    |a: u8, b: u8| (a as f32 - b as f32).powi(2);
+                                                d(color[0], pixel[0])
+                                                    + d(color[1], pixel[1])
+                                                    + d(color[2], pixel[2])
+                                            });
+                                            if let Some(temp) = temp {
+                                                if temp < d.filter_min || temp > d.filter_max {
+                                                    let r = pixel[0] as u32;
+                                                    let g = pixel[1] as u32;
+                                                    let b = pixel[2] as u32;
+
+                                                    let gray = (0.299 * r as f32
+                                                        + 0.587 * g as f32
+                                                        + 0.114 * b as f32)
+                                                        as u8;
+
+                                                    pixel[0] = gray;
+                                                    pixel[1] = gray;
+                                                    pixel[2] = gray;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    new_filtered_texture = Some(Texture2D::from_rgba8(
+                                        f.width() as u16,
+                                        f.height() as u16,
+                                        f.as_raw(),
+                                    ));
+                                }
+                            });
+
+                            ui.separator();
+
                             if let Some(hover) = self.hover {
                                 ui.label(RichText::new(format!("Hover: {:.2}°C ", hover)));
                             }
                         }
                     } else {
                         ui.label(RichText::new("No image selected"));
+                    }
+
+                    if let Some(new_texture) = new_filtered_texture {
+                        self.images[self.selected_image.unwrap()].texture = Some(new_texture);
                     }
                 });
 
