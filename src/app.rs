@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use egui::{Color32, Grid, RichText};
+use egui_file_dialog::{DialogState, FileDialog};
 use macroquad::prelude::*;
-use std::path::PathBuf;
+use std::{path::PathBuf};
 
 use crate::{image::Image, map::Map};
 
@@ -57,6 +58,7 @@ pub struct BrowseData {
     scroll: f32,
     selected_image: Option<usize>,
     hover: Option<f32>,
+    save_dialog: egui_file_dialog::FileDialog,
 }
 
 impl BrowseData {
@@ -85,51 +87,52 @@ impl BrowseData {
             scroll: 0.0,
             selected_image: None,
             hover: None,
+            save_dialog: FileDialog::new().default_pos([10.0, 10.0]),
         })
     }
 
     pub async fn update(&mut self) -> Result<Option<AppState>> {
-        // Update scrolling
-        let mouse_wheel = mouse_wheel();
-        if mouse_wheel.1 != 0.0 {
-            self.scroll += mouse_wheel.1 * 3.0;
-            if self.scroll > 0.0 {
-                self.scroll = 0.0;
-            }
+        if self.save_dialog.state() != DialogState::Open {
+            // Update scrolling
+            let mouse_wheel = mouse_wheel();
+            if mouse_wheel.1 != 0.0 {
+                self.scroll += mouse_wheel.1 * 3.0;
+                if self.scroll > 0.0 {
+                    self.scroll = 0.0;
+                }
 
-            if self.images_height > 0.0 {
-                let screen_height = screen_height();
-                if self.scroll < -(self.images_height - screen_height) {
-                    self.scroll = -(self.images_height - screen_height);
+                if self.images_height > 0.0 {
+                    let screen_height = screen_height();
+                    if self.scroll < -(self.images_height - screen_height) {
+                        self.scroll = -(self.images_height - screen_height);
+                    }
                 }
             }
-        }
 
-        // Handle mouse selection
-        if is_mouse_button_pressed(MouseButton::Left) {
-            let mouse_pos = mouse_position();
-            let mut y = self.scroll;
-            for (i, image) in self.images.iter().enumerate() {
-                if let Some(t) = &image.texture {
-                    if mouse_pos.0 >= 0.0
-                        && mouse_pos.0 <= t.width() / 2.0
-                        && mouse_pos.1 >= y
-                        && mouse_pos.1 <= y + t.height() / 2.0
-                    {
-                        self.selected_image = Some(i);
-                        self.hover = Some(mouse_pos.1 - y);
-                        break;
-                    }
-                    y += t.height() / 2.0 + 10.0;
-                    if i != self.images.len() - 1 {
-                        y += 10.0;
+            // Handle mouse selection
+            if is_mouse_button_pressed(MouseButton::Left) {
+                let mouse_pos = mouse_position();
+                let mut y = self.scroll;
+                for (i, image) in self.images.iter().enumerate() {
+                    if let Some(t) = &image.texture {
+                        if mouse_pos.0 >= 0.0
+                            && mouse_pos.0 <= t.width() / 2.0
+                            && mouse_pos.1 >= y
+                            && mouse_pos.1 <= y + t.height() / 2.0
+                        {
+                            self.selected_image = Some(i);
+                            break;
+                        }
+                        y += t.height() / 2.0 + 10.0;
+                        if i != self.images.len() - 1 {
+                            y += 10.0;
+                        }
                     }
                 }
             }
         }
 
         // Update images the have an image loaded but not the texture
-        // if !self.loaded {
         let mut not_loaded = false;
         for image in self.images.iter_mut() {
             let is_loading = *image.is_loading.lock().unwrap();
@@ -253,7 +256,7 @@ impl BrowseData {
             egui::SidePanel::right("properties")
                 .exact_width(175.0)
                 .show(egui_ctx, |ui| {
-                    let mut new_filtered_texture: Option<Texture2D> = None;
+                    let mut new_texture: Option<Texture2D> = None;
                     if let Some(image) = self.selected_image {
                         if let Some(d) = self.images[image].data.lock().unwrap().as_mut()
                             && let Some(t) = &self.images[image].texture
@@ -315,35 +318,40 @@ impl BrowseData {
                             ui.add_enabled_ui(d.color_temp.len() > 0, |ui| {
                                 ui.heading("Filter");
 
-                                Grid::new("filter").num_columns(4).min_col_width(10.0).show(ui, |ui| {
-                                    ui.label("Min");
-                                    if ui.checkbox(&mut d.filter_min_enabled, "").clicked() {
-                                        d.filter_min = d.min;
-                                    }
-                                    if !d.filter_min_enabled {
-                                        d.filter_min = d.min;
-                                    }
-                                    ui.add_enabled_ui(d.filter_min_enabled, |ui| {
-                                        ui.add(
-                                            egui::DragValue::new(&mut d.filter_min).speed(d.step),
-                                        );
-                                    });
-                                    ui.end_row();
+                                Grid::new("filter").num_columns(4).min_col_width(10.0).show(
+                                    ui,
+                                    |ui| {
+                                        ui.label("Min");
+                                        if ui.checkbox(&mut d.filter_min_enabled, "").clicked() {
+                                            d.filter_min = d.min;
+                                        }
+                                        if !d.filter_min_enabled {
+                                            d.filter_min = d.min;
+                                        }
+                                        ui.add_enabled_ui(d.filter_min_enabled, |ui| {
+                                            ui.add(
+                                                egui::DragValue::new(&mut d.filter_min)
+                                                    .speed(d.step),
+                                            );
+                                        });
+                                        ui.end_row();
 
-                                    ui.label("Max");
-                                    if ui.checkbox(&mut d.filter_max_enabled, "").clicked() {
-                                        d.filter_max = d.max;
-                                    }
-                                    if !d.filter_max_enabled {
-                                        d.filter_max = d.max;
-                                    }
-                                    ui.add_enabled_ui(d.filter_max_enabled, |ui| {
-                                        ui.add(
-                                            egui::DragValue::new(&mut d.filter_max).speed(d.step),
-                                        );
-                                    });
-                                    ui.end_row();
-                                });
+                                        ui.label("Max");
+                                        if ui.checkbox(&mut d.filter_max_enabled, "").clicked() {
+                                            d.filter_max = d.max;
+                                        }
+                                        if !d.filter_max_enabled {
+                                            d.filter_max = d.max;
+                                        }
+                                        ui.add_enabled_ui(d.filter_max_enabled, |ui| {
+                                            ui.add(
+                                                egui::DragValue::new(&mut d.filter_max)
+                                                    .speed(d.step),
+                                            );
+                                        });
+                                        ui.end_row();
+                                    },
+                                );
 
                                 if ui.button("Apply filter").clicked() {
                                     let mut f = d.image.clone();
@@ -374,7 +382,8 @@ impl BrowseData {
                                             }
                                         }
                                     }
-                                    new_filtered_texture = Some(Texture2D::from_rgba8(
+                                    d.image = f.clone();
+                                    new_texture = Some(Texture2D::from_rgba8(
                                         f.width() as u16,
                                         f.height() as u16,
                                         f.as_raw(),
@@ -387,12 +396,22 @@ impl BrowseData {
                             if let Some(hover) = self.hover {
                                 ui.label(RichText::new(format!("Hover: {:.2}°C ", hover)));
                             }
+
+                            if ui.button("Save current").clicked() {
+                                self.save_dialog.save_file();
+                            }
+
+                            if let Some(path) = self.save_dialog.take_picked() {
+                                if let Err(e) = d.image.clone().save(path) {
+                                    eprintln!("Failed to save image: {}", e);
+                                }
+                            }
                         }
                     } else {
                         ui.label(RichText::new("No image selected"));
                     }
 
-                    if let Some(new_texture) = new_filtered_texture {
+                    if let Some(new_texture) = new_texture {
                         self.images[self.selected_image.unwrap()].texture = Some(new_texture);
                     }
                 });
@@ -414,6 +433,8 @@ impl BrowseData {
                         );
                     });
             }
+
+            self.save_dialog.update(egui_ctx);
         });
         egui_macroquad::draw();
 
@@ -427,7 +448,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let mut file_dialog = egui_file_dialog::FileDialog::new();
+        let mut file_dialog = egui_file_dialog::FileDialog::new().default_pos([10.0, 10.0]);
         file_dialog.pick_directory();
         App {
             state: AppState::SelectFolder(SelectFolderData {
