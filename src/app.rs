@@ -159,7 +159,7 @@ impl BrowseData {
             {
                 let mouse_pos = mouse_position();
                 let image_ratio = t.width() / t.height();
-                let width = screen_width() - self.max_width - 10.0 - 300.0 - 10.0;
+                let width = screen_width() - self.max_width - 10.0 - 175.0 - 10.0;
                 let height = width / image_ratio;
                 let x_offset = self.max_width + 10.0;
                 let y_offset = 0.0;
@@ -233,7 +233,7 @@ impl BrowseData {
         if let Some(image) = self.selected_image {
             if let Some(t) = &self.images[image].texture {
                 let image_ratio = t.width() / t.height();
-                let width = screen_width() - max_width - 10.0 - 300.0 - 10.0;
+                let width = screen_width() - max_width - 10.0 - 175.0 - 10.0;
                 let height = width / image_ratio;
                 draw_texture_ex(
                     &t,
@@ -250,7 +250,7 @@ impl BrowseData {
 
         egui_macroquad::ui(|egui_ctx| {
             egui::SidePanel::right("properties")
-                .exact_width(300.0)
+                .exact_width(175.0)
                 .show(egui_ctx, |ui| {
                     if let Some(image) = self.selected_image {
                         if let Some(d) = self.images[image].data.lock().unwrap().as_mut()
