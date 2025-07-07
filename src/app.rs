@@ -210,13 +210,11 @@ impl BrowseData {
                     && mouse_pos.1 >= y_offset
                     && mouse_pos.1 <= y_offset + height
                 {
-                    let pixel_x = (mouse_pos.0 - x_offset)
-                        * (t.width() as f32 / (screen_width() - self.max_width - 10.0 - 175.0 - 10.0));
-                    let pixel_y = (mouse_pos.1 - y_offset)
-                        * (t.height() as f32 / (screen_height() - self.scroll));
+                    let pixel_x = (mouse_pos.0 - x_offset) * (t.width() / width);
+                    let pixel_y = (mouse_pos.1 - y_offset) * (t.height() / height);
 
                     if pixel_x < d.image.width() as f32 && pixel_y < d.image.height() as f32 {
-                        let pixel = d.image.get_pixel(pixel_x as u32, pixel_y as u32);
+                        let pixel = d.raw_image.get_pixel(pixel_x as u32, pixel_y as u32);
                         let rgb = [pixel[0], pixel[1], pixel[2]];
                         self.hover = d.color_temp.get_closest_by(|color| {
                             let d = |a: u8, b: u8| (a as f32 - b as f32).powi(2);
@@ -413,9 +411,9 @@ impl BrowseData {
                                                         + 0.114 * b as f32)
                                                         as u8;
 
-                                                    pixel[0] = gray;
-                                                    pixel[1] = gray;
-                                                    pixel[2] = gray;
+                                                    pixel[0] = gray / 2 + 128;
+                                                    pixel[1] = gray / 2 + 128;
+                                                    pixel[2] = gray / 2 + 128;
                                                 }
                                             }
                                         }

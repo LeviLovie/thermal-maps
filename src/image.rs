@@ -72,7 +72,7 @@ impl Image {
 
             let min = 10.0;
             let max = 30.0;
-            let step = 1.0;
+            let step = 0.1;
             let color_temp = Map::new();
 
             *data = Some(ImageData {
