@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Result};
 use image::RgbaImage;
 use macroquad::prelude::*;
 use std::{
@@ -11,7 +11,6 @@ use crate::map::Map;
 #[derive(Debug, Clone)]
 pub struct ImageData {
     pub image: RgbaImage,
-    pub texture: Texture2D,
     pub min: f32,
     pub max: f32,
     pub step: f32,
@@ -21,6 +20,8 @@ pub struct ImageData {
 #[derive(Debug, Clone)]
 pub struct Image {
     pub path: PathBuf,
+    pub is_loading: Arc<Mutex<bool>>,
+    pub texture: Option<Texture2D>,
     pub data: Arc<Mutex<Option<ImageData>>>,
 }
 
@@ -32,34 +33,53 @@ impl Image {
 
         Ok(Image {
             path,
+            is_loading: Arc::new(Mutex::new(false)),
+            texture: None,
             data: Arc::new(Mutex::new(None)),
         })
     }
 
-    pub fn load(&self) -> Result<()> {
-        let mut data = self.data.lock().unwrap();
-        if data.is_some() {
-            bail!("Image data is already loaded for: {}", self.path.display());
+    pub fn load(&mut self) -> Result<()> {
+        let mut is_loading = self.is_loading.lock().unwrap();
+        if *is_loading {
+            return Ok(());
         }
+        *is_loading = true;
 
-        let image = image::open(&self.path)
-            .with_context(|| format!("Failed to open image: {}", self.path.display()))?
-            .into_rgba8();
-        let (width, height) = image.dimensions();
-        let texture = Texture2D::from_rgba8(width as u16, height as u16, &image);
-        let min = 0.0;
-        let max = 255.0;
-        let step = (max - min) / 256.0;
-        let color_temp = Map::new();
+        let path = self.path.clone();
+        let data = Arc::clone(&self.data);
+        let is_loading = Arc::clone(&self.is_loading);
 
-        *data = Some(ImageData {
-            image,
-            texture,
-            min,
-            max,
-            step,
-            color_temp,
+        std::thread::spawn(move || {
+            let mut data = data.lock().unwrap();
+            if data.is_some() {
+                eprintln!("Image data is already loaded for: {}", path.display());
+                return;
+            }
+
+            let image = match image::open(&path) {
+                Ok(img) => img.into_rgba8(),
+                Err(e) => {
+                    eprintln!("Failed to open image {}: {e}", path.display());
+                    return;
+                }
+            };
+
+            let min = 10.0;
+            let max = 30.0;
+            let step = 1.0;
+            let color_temp = Map::new();
+
+            *data = Some(ImageData {
+                image,
+                min,
+                max,
+                step,
+                color_temp,
+            });
+            *is_loading.lock().unwrap() = false;
         });
+
         Ok(())
     }
 }

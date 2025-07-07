@@ -2,8 +2,8 @@ mod app;
 mod image;
 mod map;
 
-use macroquad::prelude::*;
 use anyhow::{Context, Result};
+use macroquad::prelude::*;
 
 #[macroquad::main("Thermal Image Viewer")]
 async fn main() -> Result<()> {

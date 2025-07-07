@@ -3,11 +3,7 @@ use egui::{Color32, Grid, RichText};
 use macroquad::prelude::*;
 use std::path::PathBuf;
 
-use crate::image::Image;
-
-// const BAR_X: f32 = 290.0;
-// const BAR_MAX: f32 = 60.0;
-// const BAR_MIN: f32 = 191.0;
+use crate::{image::Image, map::Map};
 
 #[derive(Debug)]
 pub enum AppState {
@@ -55,6 +51,7 @@ impl SelectFolderData {
 #[derive(Debug)]
 pub struct BrowseData {
     images: Vec<Image>,
+    loaded: bool,
     images_height: f32,
     max_width: f32,
     scroll: f32,
@@ -82,6 +79,7 @@ impl BrowseData {
 
         Ok(BrowseData {
             images,
+            loaded: false,
             images_height: 0.0,
             max_width: 0.0,
             scroll: 0.0,
@@ -94,10 +92,11 @@ impl BrowseData {
         // Update scrolling
         let mouse_wheel = mouse_wheel();
         if mouse_wheel.1 != 0.0 {
-            self.scroll += mouse_wheel.1 * 10.0;
+            self.scroll += mouse_wheel.1 * 3.0;
             if self.scroll > 0.0 {
                 self.scroll = 0.0;
             }
+
             if self.images_height > 0.0 {
                 let screen_height = screen_height();
                 if self.scroll < -(self.images_height - screen_height) {
@@ -111,18 +110,17 @@ impl BrowseData {
             let mouse_pos = mouse_position();
             let mut y = self.scroll;
             for (i, image) in self.images.iter().enumerate() {
-                let data = image.data.lock().unwrap();
-                if let Some(d) = data.as_ref() {
+                if let Some(t) = &image.texture { 
                     if mouse_pos.0 >= 0.0
-                        && mouse_pos.0 <= d.texture.width() / 2.0
+                        && mouse_pos.0 <= t.width() / 2.0
                         && mouse_pos.1 >= y
-                        && mouse_pos.1 <= y + d.texture.height() / 2.0
+                        && mouse_pos.1 <= y + t.height() / 2.0
                     {
                         self.selected_image = Some(i);
                         self.hover = Some(mouse_pos.1 - y);
                         break;
                     }
-                    y += d.texture.height() / 2.0 + 10.0;
+                    y += t.height() / 2.0 + 10.0;
                     if i != self.images.len() - 1 {
                         y += 10.0;
                     }
@@ -130,12 +128,30 @@ impl BrowseData {
             }
         }
 
+        // Update images the have an image loaded but not the texture
+        // if !self.loaded {
+            let mut not_loaded = false;
+            for image in self.images.iter_mut() {
+                let is_loading = *image.is_loading.lock().unwrap();
+                if is_loading {
+                    not_loaded = true;
+                }
+                if !is_loading && let Some(d) = image.data.lock().unwrap().as_ref() && image.texture.is_none() {
+                    image.texture = Some(Texture2D::from_rgba8(d.image.width() as u16, d.image.height() as u16, d.image.as_raw()));
+                }
+            }
+            if !not_loaded {
+                self.loaded = true;
+            }
+        // }
+
         // Update temperature based on mouse pos from the image
         if let Some(selected) = self.selected_image {
-            let data = self.images[selected].data.lock().unwrap();
-            if let Some(d) = &*data {
+            if let Some(t) = &self.images[selected].texture
+                && let Some(d) = self.images[selected].data.lock().unwrap().as_ref()
+            {
                 let mouse_pos = mouse_position();
-                let image_ratio = d.texture.width() / d.texture.height();
+                let image_ratio = t.width() / t.height();
                 let width = screen_width() - self.max_width - 10.0 - 300.0 - 10.0;
                 let height = width / image_ratio;
                 let x_offset = self.max_width + 10.0;
@@ -147,8 +163,8 @@ impl BrowseData {
                     && mouse_pos.1 >= y_offset
                     && mouse_pos.1 <= y_offset + height
                 {
-                    let pixel_x = (mouse_pos.0 - x_offset) * (d.texture.width() / width);
-                    let pixel_y = (mouse_pos.1 - y_offset) * (d.texture.height() / height);
+                    let pixel_x = (mouse_pos.0 - x_offset) * (t.width() / width);
+                    let pixel_y = (mouse_pos.1 - y_offset) * (t.height() / height);
 
                     if pixel_x < d.image.width() as f32 && pixel_y < d.image.height() as f32 {
                         let pixel = d.image.get_pixel(pixel_x as u32, pixel_y as u32);
@@ -166,19 +182,26 @@ impl BrowseData {
     pub async fn draw(&mut self) -> Result<Option<AppState>> {
         self.images_height = 0.0;
         let images_len = self.images.len();
-        let y = &mut self.scroll;
+        let mut y = self.scroll;
         for (i, image) in self.images.iter_mut().enumerate() {
-            let mut data = image.data.lock().unwrap();
-            if let Some(d) = data.as_mut() {
+            if !(*image.is_loading.lock().unwrap()) && image.data.lock().unwrap().is_none() {
+                image.load().context(format!(
+                    "Failed to load image data for {}",
+                    image.path.display()
+                ))?;
+                break;
+            }
+
+            if let Some(t) = &image.texture {
                 draw_texture_ex(
-                    &d.texture,
+                    &t,
                     0.0,
-                    *y,
+                    y,
                     WHITE,
                     DrawTextureParams {
                         dest_size: Some(Vec2::new(
-                            d.texture.width() / 2.0,
-                            d.texture.height() / 2.0,
+                            t.width() / 2.0,
+                            t.height() / 2.0,
                         )),
                         ..Default::default()
                     },
@@ -186,38 +209,33 @@ impl BrowseData {
                 if self.selected_image == Some(i) {
                     draw_rectangle_lines(
                         0.0,
-                        *y,
-                        d.texture.width() / 2.0,
-                        d.texture.height() / 2.0,
+                        y,
+                        t.width() / 2.0,
+                        t.height() / 2.0,
                         2.0,
                         YELLOW,
                     );
                 }
-                *y += d.texture.height() / 2.0 + 10.0;
-                self.images_height += d.texture.height() + 10.0;
+
+                y += t.height() / 2.0 + 10.0;
+                self.images_height += t.height() + 10.0;
                 if i != images_len - 1 {
-                    *y += 10.0;
+                    y += 10.0;
                 }
-                if self.max_width < d.texture.width() / 2.0 {
-                    self.max_width = d.texture.width() / 2.0;
+                if self.max_width < t.width() / 2.0 {
+                    self.max_width = t.width() / 2.0;
                 }
-            } else {
-                image.load().context(format!(
-                    "Failed to load image data for {}",
-                    image.path.display()
-                ))?;
             }
         }
 
         let max_width = self.max_width;
         if let Some(image) = self.selected_image {
-            let data = self.images[image].data.lock().unwrap();
-            if let Some(d) = data.as_ref() {
-                let image_ratio = d.texture.width() / d.texture.height();
+            if let Some(t) = &self.images[image].texture {
+                let image_ratio = t.width() / t.height();
                 let width = screen_width() - max_width - 10.0 - 300.0 - 10.0;
                 let height = width / image_ratio;
                 draw_texture_ex(
-                    &d.texture,
+                    &t,
                     max_width + 10.0,
                     0.0,
                     WHITE,
@@ -234,8 +252,7 @@ impl BrowseData {
                 .exact_width(300.0)
                 .show(egui_ctx, |ui| {
                     if let Some(image) = self.selected_image {
-                        let mut data = self.images[image].data.lock().unwrap();
-                        if let Some(d) = data.as_mut() {
+                        if let Some(d) = self.images[image].data.lock().unwrap().as_mut() && let Some(t) = &self.images[image].texture {
                             ui.label(
                                 RichText::new(format!(
                                     "{}",
@@ -247,14 +264,17 @@ impl BrowseData {
                                 ))
                                 .size(20.0),
                             );
+                            if !self.loaded {
+                                ui.label(RichText::new("Loading images...").size(20.0).color(Color32::from_rgb(200, 200, 200)));
+                            }
 
                             Grid::new("props").show(ui, |ui| {
                                 ui.label("Width");
-                                ui.label(format!("{} px", d.texture.width() as usize));
+                                ui.label(format!("{} px", t.width() as usize));
                                 ui.end_row();
 
                                 ui.label("Height");
-                                ui.label(format!("{} px", d.texture.height() as usize));
+                                ui.label(format!("{} px", t.height() as usize));
                                 ui.end_row();
 
                                 ui.label("Size");
@@ -278,12 +298,17 @@ impl BrowseData {
                                 ui.end_row();
                             });
 
-                            if let Some(hover) = self.hover {
-                                ui.label(RichText::new(format!("Hover: {:.2}°C ", hover)));
+                            if ui.button("Extract color map").clicked() {
+                                d.color_temp = extract_color_to_temp_map(
+                                    &d.image,
+                                    d.min,
+                                    d.max,
+                                    d.step,
+                                );
                             }
 
-                            if ui.button("Extract color map").clicked() {
-                                println!("Extracting color map...");
+                            if let Some(hover) = self.hover {
+                                ui.label(RichText::new(format!("Hover: {:.2}°C ", hover)));
                             }
                         }
                     } else {
@@ -358,31 +383,35 @@ impl App {
     }
 }
 
-// fn extract_color_to_temp_map(
-//     img: &image::RgbaImage,
-//     min_temp: f32,
-//     max_temp: f32,
-//     step: f32,
-// ) -> Vec<([u8; 3], f32)> {
-//     let x = BAR_X;
-//     let y = BAR_MAX;
-//     let width = 1.0;
-//     let height = BAR_MIN - BAR_MAX;
-//
-//     let steps = ((max_temp - min_temp) / step).round() as u32;
-//     let mut map = Vec::with_capacity((steps + 1) as usize);
-//
-//     for i in 0..=steps {
-//         let offset = ((i as f32 / steps as f32) * height as f32).round() as u32;
-//         let py = y + height - offset as f32;
-//         let px = x + width as f32 / 2.0;
-//
-//         let pixel = img.get_pixel(px as u32, py as u32);
-//         let rgb = [pixel[0], pixel[1], pixel[2]];
-//         let temp = min_temp + i as f32 * step;
-//
-//         map.push((rgb, temp));
-//     }
-//
-//     map
-// }
+const BAR_X: f32 = 290.0;
+const BAR_MAX: f32 = 60.0;
+const BAR_MIN: f32 = 191.0;
+
+fn extract_color_to_temp_map(
+    img: &image::RgbaImage,
+    min_temp: f32,
+    max_temp: f32,
+    step: f32,
+) -> Map<[u8; 3], f32> {
+    let x = BAR_X;
+    let y = BAR_MAX;
+    let width = 1.0;
+    let height = BAR_MIN - BAR_MAX;
+
+    let steps = ((max_temp - min_temp) / step).round() as u32;
+    let mut map = Map::new();
+
+    for i in 0..=steps {
+        let offset = ((i as f32 / steps as f32) * height as f32).round() as u32;
+        let py = y + height - offset as f32;
+        let px = x + width as f32 / 2.0;
+
+        let pixel = img.get_pixel(px as u32, py as u32);
+        let rgb = [pixel[0], pixel[1], pixel[2]];
+        let temp = min_temp + i as f32 * step;
+
+        map.push(rgb, temp);
+    }
+
+    map
+}
