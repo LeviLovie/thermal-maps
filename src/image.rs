@@ -10,6 +10,7 @@ use crate::map::Map;
 
 #[derive(Debug, Clone)]
 pub struct ImageData {
+    pub raw_image: RgbaImage,
     pub image: RgbaImage,
     pub min: f32,
     pub max: f32,
@@ -75,6 +76,7 @@ impl Image {
             let color_temp = Map::new();
 
             *data = Some(ImageData {
+                raw_image: image.clone(),
                 image,
                 min,
                 max,

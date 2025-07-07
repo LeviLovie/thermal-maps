@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use egui::{Color32, Grid, RichText};
 use egui_file_dialog::{DialogState, FileDialog};
+use image::Rgba;
 use macroquad::prelude::*;
-use std::{path::PathBuf};
+use std::path::PathBuf;
 
 use crate::{image::Image, map::Map};
 
@@ -130,6 +131,45 @@ impl BrowseData {
                     }
                 }
             }
+
+            // Add a mark on the image if right click
+            if is_mouse_button_pressed(MouseButton::Right) {
+                if let Some(selected) = self.selected_image {
+                    if let Some(image) = self.images.get_mut(selected) {
+                        // Get coordinates of the mouse click on the image
+                        let mouse_pos = mouse_position();
+                        let image_pos = Vec2::new(self.max_width + 10.0, 0.0);
+                        let image_width = screen_width() - self.max_width - 10.0 - 175.0 - 10.0;
+                        let image_ratio = image.texture.as_ref().unwrap().width() as f32
+                            / image.texture.as_ref().unwrap().height() as f32;
+                        let image_height = image_width / image_ratio;
+                        if mouse_pos.0 >= image_pos.x
+                            && mouse_pos.0 <= image_pos.x + image_width
+                            && mouse_pos.1 >= image_pos.y
+                            && mouse_pos.1 <= image_pos.y + image_height
+                        {
+                            let pixel_x = (mouse_pos.0 - image_pos.x)
+                                * (image.texture.as_ref().unwrap().width()
+                                    / (screen_width() - self.max_width - 10.0 - 175.0 - 10.0));
+                            let pixel_y = (mouse_pos.1 - image_pos.y)
+                                * (image.texture.as_ref().unwrap().height()
+                                    / (screen_height() - self.scroll));
+                            if let Some(d) = image.data.lock().unwrap().as_mut() {
+                                d.image.put_pixel(
+                                    pixel_x as u32,
+                                    pixel_y as u32,
+                                    Rgba([255, 0, 0, 255]),
+                                );
+                                image.texture = Some(Texture2D::from_rgba8(
+                                    d.image.width() as u16,
+                                    d.image.height() as u16,
+                                    d.image.as_raw(),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Update images the have an image loaded but not the texture
@@ -160,9 +200,7 @@ impl BrowseData {
                 && let Some(d) = self.images[selected].data.lock().unwrap().as_ref()
             {
                 let mouse_pos = mouse_position();
-                let image_ratio = t.width() / t.height();
-                let width = screen_width() - self.max_width - 10.0 - 175.0 - 10.0;
-                let height = width / image_ratio;
+                let (width, height) = scale_texture(t.clone(), self.max_width);
                 let x_offset = self.max_width + 10.0;
                 let y_offset = 0.0;
 
@@ -172,8 +210,10 @@ impl BrowseData {
                     && mouse_pos.1 >= y_offset
                     && mouse_pos.1 <= y_offset + height
                 {
-                    let pixel_x = (mouse_pos.0 - x_offset) * (t.width() / width);
-                    let pixel_y = (mouse_pos.1 - y_offset) * (t.height() / height);
+                    let pixel_x = (mouse_pos.0 - x_offset)
+                        * (t.width() as f32 / (screen_width() - self.max_width - 10.0 - 175.0 - 10.0));
+                    let pixel_y = (mouse_pos.1 - y_offset)
+                        * (t.height() as f32 / (screen_height() - self.scroll));
 
                     if pixel_x < d.image.width() as f32 && pixel_y < d.image.height() as f32 {
                         let pixel = d.image.get_pixel(pixel_x as u32, pixel_y as u32);
@@ -236,9 +276,7 @@ impl BrowseData {
             && self.loaded
         {
             if let Some(t) = &self.images[image].texture {
-                let image_ratio = t.width() / t.height();
-                let width = screen_width() - max_width - 10.0 - 175.0 - 10.0;
-                let height = width / image_ratio;
+                let (width, height) = scale_texture(t.clone(), max_width);
                 draw_texture_ex(
                     &t,
                     max_width + 10.0,
@@ -354,7 +392,7 @@ impl BrowseData {
                                 );
 
                                 if ui.button("Apply filter").clicked() {
-                                    let mut f = d.image.clone();
+                                    let mut f = d.raw_image.clone();
                                     for row in f.rows_mut() {
                                         for pixel in row {
                                             let temp = d.color_temp.get_closest_by(|color| {
@@ -516,4 +554,11 @@ fn extract_color_to_temp_map(
     }
 
     map
+}
+
+fn scale_texture(t: Texture2D, max_width: f32) -> (f32, f32) {
+    let image_ratio = t.width() / t.height();
+    let width = screen_width() - max_width - 10.0 - 175.0 - 10.0;
+    let height = width / image_ratio;
+    (width, height)
 }
