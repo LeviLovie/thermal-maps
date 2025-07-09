@@ -331,12 +331,12 @@ impl BrowseData {
 
                             ui.heading("Colors");
                             Grid::new("controls").num_columns(2).show(ui, |ui| {
-                                ui.label("Min");
-                                ui.add(egui::DragValue::new(&mut d.min).speed(d.step));
-                                ui.end_row();
-
                                 ui.label("Max");
                                 ui.add(egui::DragValue::new(&mut d.max).speed(d.step));
+                                ui.end_row();
+
+                                ui.label("Min");
+                                ui.add(egui::DragValue::new(&mut d.min).speed(d.step));
                                 ui.end_row();
 
                                 ui.label("Step");
@@ -357,21 +357,6 @@ impl BrowseData {
                                 Grid::new("filter").num_columns(4).min_col_width(10.0).show(
                                     ui,
                                     |ui| {
-                                        ui.label("Min");
-                                        if ui.checkbox(&mut d.filter_min_enabled, "").clicked() {
-                                            d.filter_min = d.min;
-                                        }
-                                        if !d.filter_min_enabled {
-                                            d.filter_min = d.min;
-                                        }
-                                        ui.add_enabled_ui(d.filter_min_enabled, |ui| {
-                                            ui.add(
-                                                egui::DragValue::new(&mut d.filter_min)
-                                                    .speed(d.step),
-                                            );
-                                        });
-                                        ui.end_row();
-
                                         ui.label("Max");
                                         if ui.checkbox(&mut d.filter_max_enabled, "").clicked() {
                                             d.filter_max = d.max;
@@ -382,6 +367,21 @@ impl BrowseData {
                                         ui.add_enabled_ui(d.filter_max_enabled, |ui| {
                                             ui.add(
                                                 egui::DragValue::new(&mut d.filter_max)
+                                                    .speed(d.step),
+                                            );
+                                        });
+
+                                        ui.end_row();
+                                        ui.label("Min");
+                                        if ui.checkbox(&mut d.filter_min_enabled, "").clicked() {
+                                            d.filter_min = d.min;
+                                        }
+                                        if !d.filter_min_enabled {
+                                            d.filter_min = d.min;
+                                        }
+                                        ui.add_enabled_ui(d.filter_min_enabled, |ui| {
+                                            ui.add(
+                                                egui::DragValue::new(&mut d.filter_min)
                                                     .speed(d.step),
                                             );
                                         });
